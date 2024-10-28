@@ -1,0 +1,28 @@
+
+<VirtualHost *:443>
+    ServerName {{ item.server_name }}
+    DocumentRoot {{ item.document_root }}
+    
+    SSLEngine on
+    SSLCertificateFile {{ item.ssl_cert_path }}
+    SSLCertificateKeyFile {{ item.ssl_key_path }}
+    SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
+    SSLCipherSuite HIGH:!aNULL:!MD5
+
+    ErrorLog {{ item.error_log }}
+    CustomLog {{ item.access_log }} combined
+
+    <Directory "{{ item.document_root }}">
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    <Directory "{{ item.document_root }}/private">
+        AuthType Basic
+        AuthName "Restricted Area"
+        AuthUserFile {{ item.auth_user_file }}
+        Require valid-user
+    </Directory>
+</VirtualHost>
+

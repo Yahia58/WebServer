@@ -1,0 +1,121 @@
+---
+- name: Configure virtual hosts with private directories, logs, HTTPS, and welcome pages
+  hosts: localhost
+  become: yes
+  vars:
+    virtual_hosts:
+      - server_name: Yahya1.com
+        document_root: /var/www/html/yahya1
+        auth_user_file: /etc/httpd/auth/passwords_yahya1
+        access_log: /var/log/httpd/yahya1_access.log
+        error_log: /var/log/httpd/yahya1_error.log
+        ssl_cert_path: /etc/pki/tls/certs/yahya1.crt
+        ssl_key_path: /etc/pki/tls/private/yahya1.key
+      - server_name: Yahya2.com
+        document_root: /var/www/html/yahya2
+        auth_user_file: /etc/httpd/auth/passwords_yahya2
+        access_log: /var/log/httpd/yahya2_access.log
+        error_log: /var/log/httpd/yahya2_error.log
+        ssl_cert_path: /etc/pki/tls/certs/yahya2.crt
+        ssl_key_path: /etc/pki/tls/private/yahya2.key
+
+  tasks:
+    - name: Install necessary Apache packages (httpd and mod_ssl)
+      yum:
+        name:
+          - httpd
+          - mod_ssl
+        state: present
+
+    - name: Enable mod_rewrite and mod_auth_basic
+      command: |
+        echo "LoadModule rewrite_module modules/mod_rewrite.so" >> /etc/httpd/conf/httpd.conf
+        echo "LoadModule auth_basic_module modules/mod_auth_basic.so" >> /etc/httpd/conf/httpd.conf
+      notify: Restart httpd
+
+    - name: Include SSL role
+      include_role:
+        name: ssl
+
+    - name: Apply HTTP to HTTPS redirect
+      template:
+        src: "roles/ssl/templates/redirect_http.conf.j2"
+        dest: "/etc/httpd/conf.d/redirect_http.conf"
+      loop: "{{ virtual_hosts }}"
+      loop_control:
+        loop_var: item
+      notify: Restart httpd
+
+    - name: Configure SSL virtual hosts
+      template:
+        src: "roles/ssl/templates/ssl_virtualhost.conf.j2"
+        dest: "/etc/httpd/conf.d/{{ item.server_name }}.conf"
+      loop: "{{ virtual_hosts }}"
+      notify: Restart httpd
+
+    - name: Create document roots
+      file:
+        path: "{{ item.document_root }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ virtual_hosts }}"
+
+    - name: Create public welcome page
+      copy:
+        content: |
+          <html>
+            <body>
+              <h1>Welcome to the public website of {{ item.server_name }}</h1>
+            </body>
+          </html>
+        dest: "{{ item.document_root }}/index.html"
+        mode: '0644'
+      loop: "{{ virtual_hosts }}"
+
+    - name: Create private directories
+      file:
+        path: "{{ item.document_root }}/private"
+        state: directory
+        mode: '0755'
+      loop: "{{ virtual_hosts }}"
+
+    - name: Create private welcome page
+      copy:
+        content: |
+          <html>
+            <body>
+              <h1>Welcome to the private section of {{ item.server_name }}</h1>
+            </body>
+          </html>
+        dest: "{{ item.document_root }}/private/index.html"
+        mode: '0644'
+      loop: "{{ virtual_hosts }}"
+
+    - name: Create .htaccess files for private section
+      copy:
+        content: |
+          AuthType Basic
+          AuthName "Restricted Area"
+          AuthUserFile {{ item.auth_user_file }}
+          Require valid-user
+        dest: "{{ item.document_root }}/private/.htaccess"
+        mode: '0644'
+      loop: "{{ virtual_hosts }}"
+
+    - name: Ensure auth directory exists
+      file:
+        path: /etc/httpd/auth
+        state: directory
+        mode: '0755'
+
+    - name: Create password files
+      command: htpasswd -bc "{{ item.auth_user_file }}" username password
+      loop: "{{ virtual_hosts }}"
+      when: item.auth_user_file is defined
+
+  handlers:
+    - name: Restart httpd
+      service:
+        name: httpd
+        state: restarted
+

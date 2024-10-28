@@ -1,0 +1,23 @@
+<VirtualHost *:80>
+    ServerAdmin webmaster@{{ item.server_name }}
+    DocumentRoot {{ item.document_root }}
+    ServerName {{ item.server_name }}
+
+    # Redirect HTTP to HTTPS
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    ErrorLog {{ item.error_log }}
+    CustomLog {{ item.access_log }} combined
+
+    <Directory "{{ item.document_root }}">
+        AllowOverride All  # Enable .htaccess for public directory
+        Require all granted
+    </Directory>
+
+    <Directory "{{ item.document_root }}/private">
+        AllowOverride All  # Enable .htaccess for private directory
+        Require all granted
+    </Directory>
+</VirtualHost>
